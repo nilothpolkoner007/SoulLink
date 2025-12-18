@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -12,38 +12,95 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Phone, Video, MoreVertical, Mic, Smile, Send } from 'lucide-react-native';
+import { io, Socket } from 'socket.io-client';
 
+/* ================= CONFIG ================= */
+
+const SOCKET_URL = 'http://YOUR_SERVER_IP:5000'; // 🔴 CHANGE THIS
+const API_URL = 'http://YOUR_SERVER_IP:5000';
+
+/* ================= TYPES ================= */
 
 type Message = {
   id: string;
-  text: string;
-  sender: 'me' | 'partner';
-  time: string;
+  content: string;
+  sender_id: string;
+  created_at: string;
 };
 
-const messages: Message[] = [
-  { id: '1', text: 'I miss you', sender: 'partner', time: '10:30 AM' },
-  { id: '2', text: 'I am always with you', sender: 'me', time: '10:32 AM' },
-  { id: '3', text: 'When can we talk again?', sender: 'partner', time: '10:35 AM' },
-  { id: '4', text: 'How about later tonight?', sender: 'me', time: '10:36 AM' },
-  { id: '5', text: 'Perfect! Can not wait', sender: 'partner', time: '10:37 AM' },
-];
+/* ================= COMPONENT ================= */
 
 export default function ChatScreen() {
   const { width } = useWindowDimensions();
   const isLarge = width >= 768;
+
+  const socketRef = useRef<Socket | null>(null);
+
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
+
+  const userId = 'USER_1'; // 🔴 real logged-in user
+  const roomId = 'ROOM_123'; // 🔴 chat room id
+  const partnerId = 'USER_2'; // 🔴 partner user id
+
+  /* ================= SOCKET SETUP ================= */
+
+  useEffect(() => {
+    socketRef.current = io(SOCKET_URL, {
+      transports: ['websocket'],
+    });
+
+    socketRef.current.emit('register_user', { userId });
+    socketRef.current.emit('join_chat', { roomId });
+
+    socketRef.current.on('receive_message', (message: Message) => {
+      setMessages((prev) => [message, ...prev]);
+    });
+
+    return () => {
+      socketRef.current?.disconnect();
+    };
+  }, []);
+
+  /* ================= LOAD CHAT HISTORY ================= */
+
+  useEffect(() => {
+    fetch(`${API_URL}/chat/${roomId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        setMessages(data.reverse());
+      });
+  }, []);
+
+  /* ================= SEND MESSAGE ================= */
+
+  const sendMessage = () => {
+    if (!inputText.trim()) return;
+
+    const message: Message = {
+      id: Date.now().toString(),
+      content: inputText,
+      sender_id: userId,
+      created_at: new Date().toISOString(),
+    };
+
+    socketRef.current?.emit('send_message', {
+      roomId,
+      message,
+    });
+
+    setMessages((prev) => [message, ...prev]);
+    setInputText('');
+  };
+
+  /* ================= UI ================= */
 
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={styles.container}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
-      <LinearGradient
-        colors={['#FFF5F8', '#F0F9FF']}
-        style={styles.background}
-      >
+      <LinearGradient colors={['#FFF5F8', '#F0F9FF']} style={styles.background}>
         {/* HEADER */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
@@ -55,6 +112,7 @@ export default function ChatScreen() {
               <Text style={styles.headerStatus}>Online</Text>
             </View>
           </View>
+
           <View style={styles.headerIcons}>
             <TouchableOpacity style={styles.iconButton}>
               <Phone size={20} color='#FF6B9D' />
@@ -68,57 +126,39 @@ export default function ChatScreen() {
           </View>
         </View>
 
-        {/* CHAT AREA */}
+        {/* CHAT */}
         <FlatList
+          inverted
           data={messages}
           keyExtractor={(item) => item.id}
           contentContainerStyle={[styles.chatContent, isLarge && styles.chatContentLarge]}
-          inverted
-          renderItem={({ item }) => (
-            <View
-              style={[
-                styles.messageBubble,
-                item.sender === 'me' ? styles.myMessage : styles.partnerMessage,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.messageText,
-                  item.sender === 'me' ? styles.myMessageText : styles.partnerMessageText,
-                ]}
-              >
-                {item.text}
-              </Text>
-              <Text
-                style={[
-                  styles.messageTime,
-                  item.sender === 'me' ? styles.myMessageTime : styles.partnerMessageTime,
-                ]}
-              >
-                {item.time}
-              </Text>
-            </View>
-          )}
+          renderItem={({ item }) => {
+            const isMe = item.sender_id === userId;
+
+            return (
+              <View style={[styles.messageBubble, isMe ? styles.myMessage : styles.partnerMessage]}>
+                <Text style={[styles.messageText, isMe && styles.myMessageText]}>
+                  {item.content}
+                </Text>
+                <Text style={styles.messageTime}>
+                  {new Date(item.created_at).toLocaleTimeString()}
+                </Text>
+              </View>
+            );
+          }}
         />
 
-        {/* AI EMOTION INDICATOR */}
-        <View style={styles.emotionBubble}>
-          <View style={styles.emotionDot} />
-          <Text style={styles.emotionText}>Loving mood</Text>
-        </View>
-
-        {/* INPUT BAR */}
+        {/* INPUT */}
         <View style={[styles.inputBar, isLarge && styles.inputBarLarge]}>
           <TouchableOpacity style={styles.inputIcon}>
             <Mic size={22} color='#6B7280' />
           </TouchableOpacity>
 
           <TextInput
-            placeholder='Type your message...'
-            placeholderTextColor='#9CA3AF'
-            style={styles.input}
             value={inputText}
             onChangeText={setInputText}
+            placeholder='Type your message...'
+            style={styles.input}
             multiline
           />
 
@@ -126,11 +166,8 @@ export default function ChatScreen() {
             <Smile size={22} color='#6B7280' />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.sendButton}>
-            <LinearGradient
-              colors={['#FF6B9D', '#FF8FB3']}
-              style={styles.sendGradient}
-            >
+          <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
+            <LinearGradient colors={['#FF6B9D', '#FF8FB3']} style={styles.sendGradient}>
               <Send size={18} color='#fff' />
             </LinearGradient>
           </TouchableOpacity>
@@ -140,29 +177,20 @@ export default function ChatScreen() {
   );
 }
 
+/* ================= STYLES (UNCHANGED) ================= */
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  background: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  background: { flex: 1 },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: Platform.OS === 'android' ? 40 : 50,
+    paddingTop: 50,
     paddingBottom: 12,
     paddingHorizontal: 16,
     backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
   },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   avatarSmall: {
     width: 42,
     height: 42,
@@ -171,143 +199,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#fff',
-  },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#1F2937',
-  },
-  headerStatus: {
-    fontSize: 13,
-    color: '#10B981',
-    marginTop: 2,
-  },
-  headerIcons: {
-    flexDirection: 'row',
-    gap: 4,
-  },
-  iconButton: {
-    padding: 8,
-    borderRadius: 8,
-  },
-  chatContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  chatContentLarge: {
-    paddingHorizontal: 120,
-  },
+  avatarText: { color: '#fff', fontWeight: '700', fontSize: 18 },
+  headerTitle: { fontSize: 17, fontWeight: '700' },
+  headerStatus: { fontSize: 13, color: '#10B981' },
+  headerIcons: { flexDirection: 'row' },
+  iconButton: { padding: 8 },
+  chatContent: { padding: 16 },
+  chatContentLarge: { paddingHorizontal: 120 },
   messageBubble: {
-    maxWidth: '75%',
     padding: 12,
     borderRadius: 18,
     marginVertical: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    maxWidth: '75%',
   },
-  myMessage: {
-    alignSelf: 'flex-end',
-    backgroundColor: '#FF6B9D',
-    borderBottomRightRadius: 4,
-  },
-  partnerMessage: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#fff',
-    borderBottomLeftRadius: 4,
-  },
-  messageText: {
-    fontSize: 15,
-    lineHeight: 20,
-    marginBottom: 4,
-  },
-  myMessageText: {
-    color: '#fff',
-  },
-  partnerMessageText: {
-    color: '#1F2937',
-  },
-  messageTime: {
-    fontSize: 11,
-  },
-  myMessageTime: {
-    color: 'rgba(255,255,255,0.8)',
-    alignSelf: 'flex-end',
-  },
-  partnerMessageTime: {
-    color: '#9CA3AF',
-  },
-  emotionBubble: {
-    position: 'absolute',
-    top: Platform.OS === 'android' ? 100 : 115,
-    right: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  emotionDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#FF6B9D',
-  },
-  emotionText: {
-    fontSize: 13,
-    color: '#FF6B9D',
-    fontWeight: '600',
-  },
+  myMessage: { alignSelf: 'flex-end', backgroundColor: '#FF6B9D' },
+  partnerMessage: { alignSelf: 'flex-start', backgroundColor: '#fff' },
+  messageText: { fontSize: 15 },
+  myMessageText: { color: '#fff' },
+  messageTime: { fontSize: 11, opacity: 0.7 },
   inputBar: {
     flexDirection: 'row',
-    alignItems: 'center',
     padding: 12,
     backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-    gap: 8,
+    alignItems: 'center',
   },
-  inputBarLarge: {
-    marginHorizontal: 120,
-    borderRadius: 24,
-    marginBottom: 12,
-    borderTopWidth: 0,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  inputIcon: {
-    padding: 4,
-  },
+  inputBarLarge: { marginHorizontal: 120, borderRadius: 24 },
   input: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingVertical: Platform.OS === 'android' ? 8 : 10,
-    fontSize: 15,
-    minHeight: 40,
-    maxHeight: 100,
     backgroundColor: '#F9FAFB',
     borderRadius: 20,
-    color: '#1F2937',
+    paddingHorizontal: 16,
   },
-  sendButton: {
-    borderRadius: 20,
-  },
+  inputIcon: { padding: 6 },
+  sendButton: { marginLeft: 6 },
   sendGradient: {
     width: 40,
     height: 40,

@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
 import { RTCView, MediaStream } from 'react-native-webrtc';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import { socket } from '../socket'; // your socket instance
+import { io, Socket } from 'socket.io-client';
+ // your socket instance
 
 const { width, height } = Dimensions.get('window');
 

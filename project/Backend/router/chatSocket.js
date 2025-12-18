@@ -2,144 +2,82 @@ import { Server } from 'socket.io';
 import ChatBundle from '../module/ChatMessage.js';
 
 const userSocketMap = new Map();
-let ioInstance = null;
+let ioInstance;
 
 const setupChatSocket = (server) => {
   const io = new Server(server, {
-    cors: {
-      origin: '*',
-      methods: ['GET', 'POST'],
-    },
+    cors: { origin: '*' },
   });
 
-  console.log('✅ Socket.IO initialized');
-
   ioInstance = io;
-  io.userSocketMap = userSocketMap;
 
   io.on('connection', (socket) => {
-    console.log('✅ New socket connected:', socket.id);
+    console.log('🟢 Connected:', socket.id);
 
-    /* ================= USER REGISTER ================= */
-
+    /* ===== USER REGISTER ===== */
     socket.on('register_user', ({ userId }) => {
       userSocketMap.set(userId, socket.id);
-      console.log(`🔗 User ${userId} linked to socket ${socket.id}`);
     });
 
-    /* ================= CHAT ================= */
-
-    socket.on('join_chat', ({ userId, roomId }) => {
-      socket.join(roomId);
-      console.log(`👥 ${userId} joined room ${roomId}`);
-    });
+    /* ===== CHAT ===== */
+    socket.on('join_chat', ({ roomId }) => socket.join(roomId));
 
     socket.on('send_message', async ({ roomId, message }) => {
-      if (!roomId || !message) return;
+      let bundle = await ChatBundle.findOne({
+        roomId,
+        sender_id: message.sender_id,
+      });
 
-      try {
-        const existing = await ChatBundle.findOne({
+      if (!bundle) {
+        bundle = await ChatBundle.create({
           roomId,
           sender_id: message.sender_id,
+          messages: [],
         });
-
-        if (existing) {
-          existing.messages.push({
-            content: message.content,
-            created_at: message.created_at,
-          });
-          await existing.save();
-        } else {
-          await ChatBundle.create({
-            roomId,
-            sender_id: message.sender_id,
-            messages: [
-              {
-                content: message.content,
-                created_at: message.created_at,
-              },
-            ],
-          });
-        }
-
-        socket.to(roomId).emit('receive_message', message);
-      } catch (err) {
-        console.error('❌ Chat save failed:', err);
       }
+
+      bundle.messages.push({
+        content: message.content,
+        created_at: message.created_at,
+      });
+
+      await bundle.save();
+      socket.to(roomId).emit('receive_message', message);
     });
 
-    /* ================= VIDEO CALL ================= */
-
-    // Call request
+    /* ===== VIDEO CALL ===== */
     socket.on('call_user', ({ toUserId, roomId, caller }) => {
-      const targetSocket = userSocketMap.get(toUserId);
-      if (targetSocket) {
-        io.to(targetSocket).emit('incoming_call', {
-          roomId,
-          caller,
-        });
-      }
+      const target = userSocketMap.get(toUserId);
+      if (target) io.to(target).emit('incoming_call', { roomId, caller });
     });
 
-    // Call accepted
     socket.on('accept_call', ({ roomId }) => {
       socket.join(roomId);
       socket.to(roomId).emit('call_accepted');
     });
 
-    // Call rejected
-    socket.on('reject_call', ({ toUserId }) => {
-      const targetSocket = userSocketMap.get(toUserId);
-      if (targetSocket) {
-        io.to(targetSocket).emit('call_rejected');
-      }
-    });
-
-    // End call
     socket.on('end_call', ({ roomId }) => {
       socket.to(roomId).emit('call_ended');
       socket.leave(roomId);
     });
 
-    /* ================= WEBRTC SIGNALING ================= */
+    /* ===== WEBRTC ===== */
+    socket.on('webrtc_offer', (d) => socket.to(d.roomId).emit('webrtc_offer', d.offer));
+    socket.on('webrtc_answer', (d) => socket.to(d.roomId).emit('webrtc_answer', d.answer));
+    socket.on('webrtc_ice', (d) => socket.to(d.roomId).emit('webrtc_ice', d.candidate));
 
-    socket.on('webrtc_offer', ({ roomId, offer }) => {
-      socket.to(roomId).emit('webrtc_offer', offer);
-    });
-
-    socket.on('webrtc_answer', ({ roomId, answer }) => {
-      socket.to(roomId).emit('webrtc_answer', answer);
-    });
-
-    socket.on('webrtc_ice', ({ roomId, candidate }) => {
-      socket.to(roomId).emit('webrtc_ice', candidate);
-    });
-
-    /* ================= EMOJI REACTION ================= */
-
+    /* ===== EMOJI ===== */
     socket.on('send_emoji', ({ roomId, emoji }) => {
-      io.to(roomId).emit('receive_emoji', {
-        emoji,
-        sender: socket.id,
-        time: Date.now(),
-      });
+      io.to(roomId).emit('receive_emoji', { emoji });
     });
-
-    /* ================= DISCONNECT ================= */
 
     socket.on('disconnect', () => {
-      console.log('🔌 Disconnected:', socket.id);
-      for (const [userId, socketId] of userSocketMap.entries()) {
-        if (socketId === socket.id) {
-          userSocketMap.delete(userId);
-          console.log(`❌ Removed user ${userId}`);
-        }
+      for (const [k, v] of userSocketMap.entries()) {
+        if (v === socket.id) userSocketMap.delete(k);
       }
     });
   });
 };
 
-// Access Socket.IO instance elsewhere
 export const getSocketIO = () => ioInstance;
-
 export default setupChatSocket;

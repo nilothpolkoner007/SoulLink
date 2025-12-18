@@ -1,5 +1,5 @@
-import { Server } from 'socket.io';
-import ChatBundle from '../module/ChatMessage.js';
+import { io, Socket } from 'socket.io-client';
+import ChatBundle from ',../../../../models/Chat';
 
 const userSocketMap = new Map();
 let ioInstance = null;
