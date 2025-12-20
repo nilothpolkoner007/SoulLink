@@ -8,6 +8,10 @@ const userSchema = new mongoose.Schema({
   gender: { type: String, required: true },
   password: { type: String, required: true },
   isAdmin: { type: Boolean, default: false },
+  status: { type: String, enum: ['Single', 'Dating', 'Engaged', 'Married', "It's Complicated"], default: 'Single' },
+  firebaseUid: { type: String, unique: true, sparse: true },
+  authProvider: { type: String, enum: ['local', 'google'], default: 'local' },
+  isConected: { type: Boolean, default: false },
   // 👇 Partner feature fields
   partnerCode: { type: String },
 });

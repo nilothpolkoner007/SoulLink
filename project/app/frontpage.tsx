@@ -2,8 +2,14 @@ import { View, Image, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { useSharedValue, withSpring, useAnimatedStyle, withRepeat, withSequence } from 'react-native-reanimated';
-import frontpage from '../assets/images/frontpage.png';
+import Animated, {
+  useSharedValue,
+  withSpring,
+  useAnimatedStyle,
+  withRepeat,
+  withSequence,
+} from 'react-native-reanimated';
+import frontpage from '../assets/images/logo/icon.png';
 import { ThemedText } from '@/components/themed-text';
 
 export default function FrontPage() {
@@ -15,12 +21,12 @@ export default function FrontPage() {
     opacity.value = withSpring(1, { damping: 12 });
     scale.value = withSequence(
       withSpring(1.1, { damping: 8 }),
-      withRepeat(withSpring(1, { damping: 10 }), -1, true)
+      withRepeat(withSpring(1, { damping: 10 }), -1, true),
     );
 
     const timer = setTimeout(() => {
-      router.replace('/(login)/login');
-    }, 2000);
+      router.replace('/LoveScreen');
+    }, 200);
 
     return () => clearTimeout(timer);
   }, []);

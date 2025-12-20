@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import Partner from "../module/partner.js";
 import authenticate from '../middleware/authenticate.js'; 
+import firebaseAuth from '../middleware/firebaseAuth.js';
 
 const router = express.Router();
 
@@ -23,6 +24,35 @@ router.post("/register", async (req, res) => {
     res.status(500).json({ massage: "server error" });
   }
 }); 
+router.post('/firebase-login', firebaseAuth, async (req, res) => {
+  try {
+    const { uid, email, name, picture } = req.firebaseUser;
+
+    let user = await User.findOne({ firebaseUid: uid });
+
+    if (!user) {
+      user = await User.create({
+        name: name || 'User',
+        email,
+        firebaseUid: uid,
+        img: picture,
+        authProvider: 'google',
+      });
+    }
+
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+    res.json({
+      message: 'Firebase login success',
+      token,
+      user,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 
 router.post('/login', async (req, res) => {
   try {

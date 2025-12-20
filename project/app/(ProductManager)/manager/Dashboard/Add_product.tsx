@@ -10,7 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-
+import axios from 'axios';
 
 const MAX_IMAGES = 4;
 
@@ -91,19 +91,46 @@ const AddProduct: React.FC = () => {
     });
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const err = validate();
     setErrors(err);
     if (Object.keys(err).length) return;
 
-    // Here you can build FormData or JSON to send to your API
-    console.log('Submitting product:', form, images);
-    Alert.alert('Product submitted (demo)');
+    try {
+      // Upload images first
+      const imageUrls: string[] = [];
+      for (const img of images) {
+        const formData = new FormData();
+        formData.append('file', {
+          uri: img.uri,
+          type: img.type,
+          name: img.fileName,
+        } as any);
+        const uploadRes = await axios.post('http://192.168.31.91:5000/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        imageUrls.push(uploadRes.data.imageUrl);
+      }
 
-    // reset
-    setForm({ name: '', sku: '', price: '', category: '', stock: '', description: '' });
-    setImages([]);
-    setErrors({});
+      // Create product
+      const productData = {
+        ...form,
+        price: parseFloat(form.price),
+        stock: parseInt(form.stock),
+        images: imageUrls,
+      };
+      await axios.post('http://192.168.31.91:5000/api/products', productData);
+
+      Alert.alert('Success', 'Product added successfully');
+
+      // reset
+      setForm({ name: '', sku: '', price: '', category: '', stock: '', description: '' });
+      setImages([]);
+      setErrors({});
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Error', 'Failed to add product');
+    }
   };
 
   return (

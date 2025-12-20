@@ -1,21 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
-import { RTCView, MediaStream } from 'react-native-webrtc';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { io, Socket } from 'socket.io-client';
- // your socket instance
 
 const { width, height } = Dimensions.get('window');
 
 interface VideoCallProps {
-  localStream: MediaStream | null;
-  remoteStream: MediaStream | null;
-  onToggleAudio: (enabled: boolean) => void;
-  onToggleVideo: (enabled: boolean) => void;
-  onEndCall: () => void;
-  callStatus: string;
+  localStream?: any;
+  remoteStream?: any;
+  onToggleAudio?: (enabled: boolean) => void;
+  onToggleVideo?: (enabled: boolean) => void;
+  onEndCall?: () => void;
+  callStatus?: string;
   remoteUsername?: string;
-  roomId: string;
+  roomId?: string;
 }
 
 interface FloatingEmoji {
@@ -26,23 +24,34 @@ interface FloatingEmoji {
 const EMOJIS = ['❤️', '😄', '😢', '🔥', '😘'];
 
 export default function VideoCallScreen({
-  localStream,
-  remoteStream,
-  onToggleAudio,
-  onToggleVideo,
   onEndCall,
-  callStatus,
-  remoteUsername,
-  roomId,
+  callStatus = 'connecting',
+  remoteUsername = 'User',
+  roomId = 'room1',
 }: VideoCallProps) {
+  const [socket, setSocket] = useState<Socket | null>(null);
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [videoEnabled, setVideoEnabled] = useState(true);
   const [floatingEmojis, setFloatingEmojis] = useState<FloatingEmoji[]>([]);
 
-  /* ================= SOCKET EMOJI RECEIVE ================= */
+  useEffect(() => {
+    // Connect to socket server for emoji functionality
+    const newSocket = io('http://192.168.31.91:5000'); // Use your backend IP
+    setSocket(newSocket);
+
+    // Register user and join room for emoji sharing
+    newSocket.emit('register_user', { userId: 'currentUserId' });
+    newSocket.emit('join_chat', { userId: 'currentUserId', roomId });
+
+    return () => {
+      newSocket.disconnect();
+    };
+  }, [roomId]);
 
   useEffect(() => {
-    socket.on('receive-emoji', ({ emoji }) => {
+    if (!socket) return;
+
+    socket.on('receive_emoji', ({ emoji }) => {
       const id = Math.random().toString();
       setFloatingEmojis((prev) => [...prev, { id, emoji }]);
 
@@ -52,241 +61,174 @@ export default function VideoCallScreen({
     });
 
     return () => {
-      socket.off('receive-emoji');
+      socket.off('receive_emoji');
     };
-  }, []);
-
-  /* ================= HANDLERS ================= */
+  }, [socket]);
 
   const toggleAudio = () => {
-    const newState = !audioEnabled;
-    setAudioEnabled(newState);
-    onToggleAudio(newState);
+    setAudioEnabled(!audioEnabled);
   };
 
   const toggleVideo = () => {
-    const newState = !videoEnabled;
-    setVideoEnabled(newState);
-    onToggleVideo(newState);
+    setVideoEnabled(!videoEnabled);
   };
 
   const sendEmoji = (emoji: string) => {
-    socket.emit('send-emoji', { roomId, emoji });
+    if (!socket) return;
+    socket.emit('send_emoji', { roomId, emoji });
   };
-
-  /* ================= UI ================= */
 
   return (
     <View style={styles.container}>
-      {/* Remote Video */}
-      {remoteStream ? (
-        <RTCView streamURL={remoteStream.toURL()} style={styles.remoteVideo} objectFit='cover' />
-      ) : (
-        <View style={styles.waiting}>
-          <Text style={styles.waitingText}>{callStatus}</Text>
-          {remoteUsername && <Text style={styles.subText}>Calling {remoteUsername}…</Text>}
+      {/* Video Placeholder */}
+      <View style={styles.videoContainer}>
+        <View style={styles.remoteVideo}>
+          <Text style={styles.placeholderText}>Video Call</Text>
+          <Text style={styles.statusText}>{callStatus}</Text>
+          <Text style={styles.usernameText}>{remoteUsername}</Text>
         </View>
-      )}
 
-      {/* Local Video */}
-      <View style={styles.localContainer}>
-        {localStream && videoEnabled ? (
-          <RTCView streamURL={localStream.toURL()} style={styles.localVideo} objectFit='cover' />
-        ) : (
-          <View style={styles.videoOff}>
-            <Text style={styles.videoOffText}>📷 OFF</Text>
-          </View>
-        )}
-        <Text style={styles.youLabel}>You</Text>
+        <View style={styles.localVideo}>
+          <Text style={styles.localText}>You</Text>
+        </View>
       </View>
 
       {/* Floating Emojis */}
-      {floatingEmojis.map((item) => (
-        <Animated.Text
-          key={item.id}
+      {floatingEmojis.map((emoji) => (
+        <Animated.View
+          key={emoji.id}
           entering={FadeIn}
           exiting={FadeOut}
           style={styles.floatingEmoji}
         >
-          {item.emoji}
-        </Animated.Text>
+          <Text style={styles.emojiText}>{emoji.emoji}</Text>
+        </Animated.View>
       ))}
 
-      {/* Emoji Reaction Bar */}
-      <View style={styles.emojiBar}>
+      {/* Controls */}
+      <View style={styles.controls}>
+        <TouchableOpacity
+          style={[styles.controlButton, !audioEnabled && styles.disabledButton]}
+          onPress={toggleAudio}
+        >
+          <Text style={styles.controlText}>🎤</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.controlButton, !videoEnabled && styles.disabledButton]}
+          onPress={toggleVideo}
+        >
+          <Text style={styles.controlText}>📹</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.controlButton, styles.endCallButton]} onPress={onEndCall}>
+          <Text style={styles.endCallText}>📞</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Emoji Panel */}
+      <View style={styles.emojiPanel}>
         {EMOJIS.map((emoji) => (
-          <TouchableOpacity key={emoji} onPress={() => sendEmoji(emoji)} style={styles.emojiBtn}>
-            <Text style={styles.emoji}>{emoji}</Text>
+          <TouchableOpacity key={emoji} style={styles.emojiButton} onPress={() => sendEmoji(emoji)}>
+            <Text style={styles.emojiText}>{emoji}</Text>
           </TouchableOpacity>
         ))}
       </View>
-
-      {/* Call Controls */}
-      <View style={styles.controls}>
-        <TouchableOpacity
-          onPress={toggleAudio}
-          style={[styles.controlBtn, !audioEnabled && styles.redBtn]}
-        >
-          <Text style={styles.controlText}>{audioEnabled ? '🎙️' : '🔇'}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={toggleVideo}
-          style={[styles.controlBtn, !videoEnabled && styles.redBtn]}
-        >
-          <Text style={styles.controlText}>{videoEnabled ? '📹' : '🚫'}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={onEndCall} style={[styles.controlBtn, styles.endBtn]}>
-          <Text style={styles.controlText}>📞❌</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Username */}
-      {remoteUsername && (
-        <View style={styles.nameTag}>
-          <Text style={styles.nameText}>{remoteUsername}</Text>
-        </View>
-      )}
     </View>
   );
 }
-
-/* ================= STYLES ================= */
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
   },
-
-  remoteVideo: {
-    width,
-    height,
-    position: 'absolute',
-  },
-
-  waiting: {
+  videoContainer: {
     flex: 1,
-    alignItems: 'center',
+    position: 'relative',
+  },
+  remoteVideo: {
+    flex: 1,
     justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
   },
-
-  waitingText: {
+  placeholderText: {
     color: '#fff',
-    fontSize: 20,
+    fontSize: 24,
+    fontWeight: 'bold',
   },
-
-  subText: {
+  statusText: {
     color: '#ccc',
-    marginTop: 8,
+    fontSize: 16,
+    marginTop: 10,
   },
-
-  localContainer: {
+  usernameText: {
+    color: '#fff',
+    fontSize: 18,
+    marginTop: 5,
+  },
+  localVideo: {
     position: 'absolute',
-    top: 40,
-    right: 16,
+    top: 20,
+    right: 20,
     width: 120,
     height: 160,
-    borderRadius: 12,
-    overflow: 'hidden',
+    backgroundColor: '#333',
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
     borderWidth: 2,
     borderColor: '#fff',
   },
-
-  localVideo: {
-    width: '100%',
-    height: '100%',
-  },
-
-  videoOff: {
-    flex: 1,
-    backgroundColor: '#333',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  videoOffText: {
+  localText: {
     color: '#fff',
+    fontSize: 14,
   },
-
-  youLabel: {
-    position: 'absolute',
-    bottom: 4,
-    left: 6,
-    fontSize: 12,
-    color: '#fff',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    paddingHorizontal: 6,
-    borderRadius: 6,
-  },
-
-  controls: {
-    position: 'absolute',
-    bottom: 24,
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 20,
-  },
-
-  controlBtn: {
-    backgroundColor: '#444',
-    padding: 16,
-    borderRadius: 40,
-  },
-
-  redBtn: {
-    backgroundColor: '#C62828',
-  },
-
-  endBtn: {
-    backgroundColor: '#E53935',
-  },
-
-  controlText: {
-    fontSize: 22,
-    color: '#fff',
-  },
-
-  emojiBar: {
-    position: 'absolute',
-    bottom: 90,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    padding: 10,
-    borderRadius: 30,
-  },
-
-  emojiBtn: {
-    marginHorizontal: 6,
-  },
-
-  emoji: {
-    fontSize: 26,
-  },
-
   floatingEmoji: {
     position: 'absolute',
-    bottom: height / 2,
-    alignSelf: 'center',
-    fontSize: 48,
+    top: height / 2 - 50,
+    left: width / 2 - 25,
   },
-
-  nameTag: {
-    position: 'absolute',
-    top: 40,
-    left: 16,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
+  emojiText: {
+    fontSize: 40,
   },
-
-  nameText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+  controls: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingVertical: 20,
+    paddingHorizontal: 40,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+  },
+  controlButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#333',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  disabledButton: {
+    backgroundColor: '#666',
+  },
+  controlText: {
+    fontSize: 24,
+  },
+  endCallButton: {
+    backgroundColor: '#ff4444',
+  },
+  endCallText: {
+    fontSize: 24,
+  },
+  emojiPanel: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingVertical: 15,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+  },
+  emojiButton: {
+    padding: 10,
   },
 });

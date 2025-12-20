@@ -9,7 +9,7 @@ import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Fonts } from '@/constants/theme';
 
-import logo from '@/assets/images/logo/logo.png';
+import logo from '@/assets/images/logo/icon.png';
 
 export default function ExploreScreen() {
   return (

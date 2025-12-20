@@ -10,7 +10,7 @@ export function useAuthRedirect() {
       const token = await AsyncStorage.getItem('token');
 
       if (token) {
-        router.replace('(tabs)');
+        router.replace('(tabs)/index');
       } else {
         router.replace('(login)/login');
       }

@@ -37,11 +37,11 @@ connectDB();
 /* ===================== MIDDLEWARE ===================== */
 app.use(
   cors({
-    origin: '*', // React Native safe
+    origin: process.env.REACT_APP_URL, // React Native safe
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
   }),
 );
-
+ 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

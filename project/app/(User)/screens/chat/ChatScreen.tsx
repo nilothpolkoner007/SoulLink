@@ -16,8 +16,8 @@ import { io, Socket } from 'socket.io-client';
 
 /* ================= CONFIG ================= */
 
-const SOCKET_URL = 'http://YOUR_SERVER_IP:5000'; // 🔴 CHANGE THIS
-const API_URL = 'http://YOUR_SERVER_IP:5000';
+const SOCKET_URL = 'http://192.168.31.91:5000';
+const API_URL = 'http://192.168.31.91:5000';
 
 /* ================= TYPES ================= */
 

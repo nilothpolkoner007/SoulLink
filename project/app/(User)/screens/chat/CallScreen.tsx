@@ -1,145 +1,185 @@
+import React, { useEffect, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { io, Socket } from 'socket.io-client';
-import ChatBundle from ',../../../../models/Chat';
+import { useNavigation, useRoute } from '@react-navigation/native';
 
-const userSocketMap = new Map();
-let ioInstance = null;
+const CallScreen = () => {
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [callStatus, setCallStatus] = useState('idle'); // idle, calling, incoming, connected
+  const [caller, setCaller] = useState(null);
+  const [roomId, setRoomId] = useState('');
+  const navigation = useNavigation();
+  const route = useRoute();
+  const { toUserId, isIncoming } = route.params || {};
 
-const setupChatSocket = (server) => {
-  const io = new Server(server, {
-    cors: {
-      origin: '*',
-      methods: ['GET', 'POST'],
-    },
-  });
+  useEffect(() => {
+    // Connect to socket server
+    const newSocket = io('http://localhost:5000'); // Adjust URL as needed
+    setSocket(newSocket);
 
-  console.log('✅ Socket.IO initialized');
+    // Register user
+    newSocket.emit('register_user', { userId: 'currentUserId' }); // Replace with actual user ID
 
-  ioInstance = io;
-  io.userSocketMap = userSocketMap;
-
-  io.on('connection', (socket) => {
-    console.log('✅ New socket connected:', socket.id);
-
-    /* ================= USER REGISTER ================= */
-
-    socket.on('register_user', ({ userId }) => {
-      userSocketMap.set(userId, socket.id);
-      console.log(`🔗 User ${userId} linked to socket ${socket.id}`);
+    // Listen for incoming calls
+    newSocket.on('incoming_call', ({ roomId, caller }) => {
+      setCallStatus('incoming');
+      setCaller(caller);
+      setRoomId(roomId);
     });
 
-    /* ================= CHAT ================= */
-
-    socket.on('join_chat', ({ userId, roomId }) => {
-      socket.join(roomId);
-      console.log(`👥 ${userId} joined room ${roomId}`);
+    // Listen for call accepted
+    newSocket.on('call_accepted', () => {
+      setCallStatus('connected');
+      // Navigate to video call screen
+      navigation.navigate('VideoCallScreen', { roomId });
     });
 
-    socket.on('send_message', async ({ roomId, message }) => {
-      if (!roomId || !message) return;
-
-      try {
-        const existing = await ChatBundle.findOne({
-          roomId,
-          sender_id: message.sender_id,
-        });
-
-        if (existing) {
-          existing.messages.push({
-            content: message.content,
-            created_at: message.created_at,
-          });
-          await existing.save();
-        } else {
-          await ChatBundle.create({
-            roomId,
-            sender_id: message.sender_id,
-            messages: [
-              {
-                content: message.content,
-                created_at: message.created_at,
-              },
-            ],
-          });
-        }
-
-        socket.to(roomId).emit('receive_message', message);
-      } catch (err) {
-        console.error('❌ Chat save failed:', err);
-      }
+    // Listen for call rejected
+    newSocket.on('call_rejected', () => {
+      setCallStatus('idle');
+      Alert.alert('Call Rejected', 'The call was rejected.');
     });
 
-    /* ================= VIDEO CALL ================= */
-
-    // Call request
-    socket.on('call_user', ({ toUserId, roomId, caller }) => {
-      const targetSocket = userSocketMap.get(toUserId);
-      if (targetSocket) {
-        io.to(targetSocket).emit('incoming_call', {
-          roomId,
-          caller,
-        });
-      }
+    // Listen for call ended
+    newSocket.on('call_ended', () => {
+      setCallStatus('idle');
+      Alert.alert('Call Ended', 'The call has ended.');
+      navigation.goBack();
     });
 
-    // Call accepted
-    socket.on('accept_call', ({ roomId }) => {
-      socket.join(roomId);
-      socket.to(roomId).emit('call_accepted');
+    return () => {
+      newSocket.disconnect();
+    };
+  }, []);
+
+  const initiateCall = () => {
+    if (!socket || !toUserId) return;
+    const callRoomId = `call_${Date.now()}`;
+    setRoomId(callRoomId);
+    setCallStatus('calling');
+    socket.emit('call_user', {
+      toUserId,
+      roomId: callRoomId,
+      caller: { id: 'currentUserId', name: 'Your Name' }, // Replace with actual data
     });
+  };
 
-    // Call rejected
-    socket.on('reject_call', ({ toUserId }) => {
-      const targetSocket = userSocketMap.get(toUserId);
-      if (targetSocket) {
-        io.to(targetSocket).emit('call_rejected');
-      }
-    });
+  const acceptCall = () => {
+    if (!socket || !roomId) return;
+    socket.emit('accept_call', { roomId });
+  };
 
-    // End call
-    socket.on('end_call', ({ roomId }) => {
-      socket.to(roomId).emit('call_ended');
-      socket.leave(roomId);
-    });
+  const rejectCall = () => {
+    if (!socket) return;
+    socket.emit('reject_call', { toUserId: caller.id });
+    setCallStatus('idle');
+  };
 
-    /* ================= WEBRTC SIGNALING ================= */
+  const endCall = () => {
+    if (!socket || !roomId) return;
+    socket.emit('end_call', { roomId });
+    setCallStatus('idle');
+    navigation.goBack();
+  };
 
-    socket.on('webrtc_offer', ({ roomId, offer }) => {
-      socket.to(roomId).emit('webrtc_offer', offer);
-    });
+  if (callStatus === 'incoming') {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>Incoming Call</Text>
+        <Text style={styles.caller}>{caller?.name || 'Unknown'}</Text>
+        <View style={styles.buttonContainer}>
+          <TouchableOpacity style={styles.acceptButton} onPress={acceptCall}>
+            <Text style={styles.buttonText}>Accept</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.rejectButton} onPress={rejectCall}>
+            <Text style={styles.buttonText}>Reject</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
-    socket.on('webrtc_answer', ({ roomId, answer }) => {
-      socket.to(roomId).emit('webrtc_answer', answer);
-    });
+  if (callStatus === 'calling') {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>Calling...</Text>
+        <TouchableOpacity style={styles.endButton} onPress={endCall}>
+          <Text style={styles.buttonText}>End Call</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
-    socket.on('webrtc_ice', ({ roomId, candidate }) => {
-      socket.to(roomId).emit('webrtc_ice', candidate);
-    });
+  if (callStatus === 'connected') {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>Call Connected</Text>
+        <TouchableOpacity style={styles.endButton} onPress={endCall}>
+          <Text style={styles.buttonText}>End Call</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
-    /* ================= EMOJI REACTION ================= */
-
-    socket.on('send_emoji', ({ roomId, emoji }) => {
-      io.to(roomId).emit('receive_emoji', {
-        emoji,
-        sender: socket.id,
-        time: Date.now(),
-      });
-    });
-
-    /* ================= DISCONNECT ================= */
-
-    socket.on('disconnect', () => {
-      console.log('🔌 Disconnected:', socket.id);
-      for (const [userId, socketId] of userSocketMap.entries()) {
-        if (socketId === socket.id) {
-          userSocketMap.delete(userId);
-          console.log(`❌ Removed user ${userId}`);
-        }
-      }
-    });
-  });
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>Call Screen</Text>
+      <TouchableOpacity style={styles.callButton} onPress={initiateCall}>
+        <Text style={styles.buttonText}>Call User</Text>
+      </TouchableOpacity>
+    </View>
+  );
 };
 
-// Access Socket.IO instance elsewhere
-export const getSocketIO = () => ioInstance;
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000',
+  },
+  title: {
+    fontSize: 24,
+    color: '#fff',
+    marginBottom: 20,
+  },
+  caller: {
+    fontSize: 18,
+    color: '#fff',
+    marginBottom: 40,
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '80%',
+  },
+  callButton: {
+    backgroundColor: '#4CAF50',
+    padding: 15,
+    borderRadius: 10,
+  },
+  acceptButton: {
+    backgroundColor: '#4CAF50',
+    padding: 15,
+    borderRadius: 10,
+    width: 100,
+  },
+  rejectButton: {
+    backgroundColor: '#f44336',
+    padding: 15,
+    borderRadius: 10,
+    width: 100,
+  },
+  endButton: {
+    backgroundColor: '#f44336',
+    padding: 15,
+    borderRadius: 10,
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    textAlign: 'center',
+  },
+});
 
-export default setupChatSocket;
+export default CallScreen;

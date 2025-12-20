@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,66 +9,42 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
+import axios from 'axios';
 
 interface Product {
-  id: string;
+  _id: string;
   name: string;
   sku: string;
   price: number;
   stock: number;
   category: string;
-  image?: string;
-  featured: boolean;
+  images?: string[];
+  description?: string;
 }
 
-const mockProducts: Product[] = [
-  {
-    id: 'P-1001',
-    name: 'Organic Turmeric Powder',
-    sku: 'TG-001',
-    price: 249,
-    stock: 120,
-    category: 'Grocery',
-    image: '',
-    featured: true,
-  },
-  {
-    id: 'P-1002',
-    name: 'Stainless Bottle 750ml',
-    sku: 'ST-750',
-    price: 499,
-    stock: 40,
-    category: 'Home',
-    image: '',
-    featured: false,
-  },
-  {
-    id: 'P-1003',
-    name: 'Cotton Kurta - M',
-    sku: 'CK-001-M',
-    price: 899,
-    stock: 15,
-    category: 'Fashion',
-    image: '',
-    featured: false,
-  },
-  {
-    id: 'P-1004',
-    name: 'Herbal Tea Mix',
-    sku: 'HT-035',
-    price: 199,
-    stock: 200,
-    category: 'Grocery',
-    image: '',
-    featured: true,
-  },
-];
-
 const ManageProduct: React.FC = () => {
-  const [products, setProducts] = useState<Product[]>(mockProducts);
+  const [products, setProducts] = useState<Product[]>([]);
   const [query, setQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchProducts();
+  }, []);
+
+  const fetchProducts = async () => {
+    try {
+      const res = await axios.get('http://192.168.31.91:5000/api/products');
+      setProducts(res.data);
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Error', 'Failed to load products');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const categories = useMemo(
     () => Array.from(new Set(products.map((p) => p.category))).sort(),
@@ -80,132 +56,149 @@ const ManageProduct: React.FC = () => {
     return products.filter((p) => {
       if (filterCategory && p.category !== filterCategory) return false;
       if (!q) return true;
-      return `${p.name} ${p.sku} ${p.id}`.toLowerCase().includes(q);
+      return `${p.name} ${p.sku} ${p._id}`.toLowerCase().includes(q);
     });
   }, [products, query, filterCategory]);
 
-  const remove = (id: string) => {
+  const remove = async (id: string) => {
     Alert.alert('Confirm', 'Delete this product?', [
       { text: 'Cancel' },
-      { text: 'Delete', onPress: () => setProducts((prev) => prev.filter((p) => p.id !== id)) },
+      { text: 'Delete', onPress: async () => {
+        try {
+          await axios.delete(`http://192.168.31.91:5000/api/products/${id}`);
+          setProducts((prev) => prev.filter((p) => p._id !== id));
+        } catch (error) {
+          console.error(error);
+          Alert.alert('Error', 'Failed to delete product');
+        }
+      }},
     ]);
   };
 
   const toggleFeatured = (id: string) => {
-    setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, featured: !p.featured } : p)));
+    // Assuming there's a featured field, but backend doesn't have it
+    // For now, skip
   };
 
-  const saveEdit = (updated: Product) => {
-    setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
-    setEditing(null);
+  const saveEdit = async (updated: Product) => {
+    try {
+      await axios.put(`http://192.168.31.91:5000/api/products/${updated._id}`, updated);
+      setProducts((prev) => prev.map((p) => (p._id === updated._id ? updated : p)));
+      setEditing(null);
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Error', 'Failed to update product');
+    }
   };
 
   const startCreate = () => {
-    const id = 'P-' + (Math.floor(Math.random() * 9000) + 1000);
     const newProd: Product = {
-      id,
+      _id: 'temp_' + Date.now(),
       name: 'New product',
       sku: '',
       price: 0,
       stock: 0,
       category: '',
-      image: '',
-      featured: false,
     };
-    setProducts((prev) => [newProd, ...prev]);
-    setEditing(id);
+    setEditingProduct(newProd);
+    setEditing('new');
   };
 
   return (
     <ScrollView style={styles.page}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Manage Products</Text>
-        <Text style={styles.subtitle}>View, edit, feature or remove products</Text>
-      </View>
-
-      <View style={styles.card}>
-        <View style={styles.controls}>
-          <View style={styles.left}>
-            <TextInput
-              style={styles.input}
-              placeholder='Search name, sku or id...'
-              value={query}
-              onChangeText={setQuery}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder='Filter category'
-              value={filterCategory}
-              onChangeText={setFilterCategory}
-            />
-          </View>
-
-          <View style={styles.actions}>
-            <TouchableOpacity
-              style={styles.btnGhost}
-              onPress={() => {
-                setQuery('');
-                setFilterCategory('');
-              }}
-            >
-              <Text>Reset</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.btnPrimary} onPress={startCreate}>
-              <Text style={{ color: '#fff' }}>+ New Product</Text>
-            </TouchableOpacity>
-          </View>
+      {loading ? (
+        <View style={styles.center}>
+          <Text>Loading products...</Text>
         </View>
+      ) : (
+        <>
+          <View style={styles.header}>
+            <Text style={styles.title}>Manage Products</Text>
+            <Text style={styles.subtitle}>View, edit, feature or remove products</Text>
+          </View>
 
-        {filtered.length === 0 && <Text style={styles.empty}>No products found</Text>}
-
-        <View style={styles.grid}>
-          {filtered.map((p) => (
-            <View key={p.id} style={styles.cardItem}>
-              <View style={styles.thumb}>
-                {p.image ? (
-                  <Image source={{ uri: p.image }} style={styles.thumbImage} />
-                ) : (
-                  <Text style={styles.thumbText}>{p.name[0]}</Text>
-                )}
+          <View style={styles.card}>
+            <View style={styles.controls}>
+              <View style={styles.left}>
+                <TextInput
+                  style={styles.input}
+                  placeholder='Search name, sku or id...'
+                  value={query}
+                  onChangeText={setQuery}
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder='Filter category'
+                  value={filterCategory}
+                  onChangeText={setFilterCategory}
+                />
               </View>
 
-              <View style={styles.info}>
-                <View style={styles.top}>
-                  <Text style={styles.name}>{p.name}</Text>
-                  <Text style={styles.sku}>{p.sku || p.id}</Text>
-                </View>
-
-                <View style={styles.meta}>
-                  <Text style={styles.price}>₹{p.price}</Text>
-                  <Text style={styles.stock}>{p.stock} in stock</Text>
-                  <Text style={[styles.featured, !p.featured && styles.featuredOff]}>
-                    {p.featured ? 'Featured' : '—'}
-                  </Text>
-                </View>
-
-                <View style={styles.bottom}>
-                  <TouchableOpacity style={styles.btnSmall} onPress={() => setEditing(p.id)}>
-                    <Text>Edit</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.btnSmall} onPress={() => toggleFeatured(p.id)}>
-                    <Text>{p.featured ? 'Unfeature' : 'Feature'}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.btnSmall, styles.btnDanger]}
-                    onPress={() => remove(p.id)}
-                  >
-                    <Text style={{ color: '#fff' }}>Delete</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {editing === p.id && (
-                  <ProductEditor product={p} onSave={saveEdit} onCancel={() => setEditing(null)} />
-                )}
+              <View style={styles.actions}>
+                <TouchableOpacity
+                  style={styles.btnGhost}
+                  onPress={() => {
+                    setQuery('');
+                    setFilterCategory('');
+                  }}
+                >
+                  <Text>Reset</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.btnPrimary} onPress={startCreate}>
+                  <Text style={{ color: '#fff' }}>+ New Product</Text>
+                </TouchableOpacity>
               </View>
             </View>
-          ))}
-        </View>
-      </View>
+
+            {filtered.length === 0 && <Text style={styles.empty}>No products found</Text>}
+
+            <View style={styles.grid}>
+              {filtered.map((p) => (
+                <View key={p._id} style={styles.cardItem}>
+                  <View style={styles.thumb}>
+                    {p.images?.[0] ? (
+                      <Image source={{ uri: p.images[0] }} style={styles.thumbImage} />
+                    ) : (
+                      <Text style={styles.thumbText}>{p.name[0]}</Text>
+                    )}
+                  </View>
+
+                  <View style={styles.info}>
+                    <View style={styles.top}>
+                      <Text style={styles.name}>{p.name}</Text>
+                      <Text style={styles.sku}>{p.sku || p._id}</Text>
+                    </View>
+
+                    <View style={styles.meta}>
+                      <Text style={styles.price}>₹{p.price}</Text>
+                      <Text style={styles.stock}>{p.stock} in stock</Text>
+                    </View>
+
+                    <View style={styles.bottom}>
+                      <TouchableOpacity style={styles.btnSmall} onPress={() => {
+                        setEditing(p._id);
+                        setEditingProduct(p);
+                      }}>
+                        <Text>Edit</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.btnSmall, styles.btnDanger]}
+                        onPress={() => remove(p._id)}
+                      >
+                        <Text style={{ color: '#fff' }}>Delete</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {editing === p._id && editingProduct && (
+                      <ProductEditor product={editingProduct} onSave={saveEdit} onCancel={() => setEditing(null)} />
+                    )}
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+        </>
+      )}
     </ScrollView>
   );
 };
@@ -361,6 +354,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   empty: { padding: 22, color: '#6B7280', textAlign: 'center' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   editOverlay: {
     position: 'absolute',
     top: 10,
