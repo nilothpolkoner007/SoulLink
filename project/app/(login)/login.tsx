@@ -1,33 +1,37 @@
-import { useEffect, useState } from 'react';
-import { View, TextInput, TouchableOpacity, StyleSheet, Platform } from 'react-native';
-import * as LocalAuthentication from 'expo-local-authentication';
-import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
-import LottieView from 'lottie-react-native';
+import { API_BASE } from '@/constants/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import { API_BASE } from '@/constants/api';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as LocalAuthentication from 'expo-local-authentication';
+import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [biometricAvailable, setBiometricAvailable] = useState(false);
 
   useEffect(() => {
     checkIfLoggedIn();
-    LocalAuthentication.hasHardwareAsync().then(async (has) => {
-      const enrolled = await LocalAuthentication.isEnrolledAsync();
-      setBiometricAvailable(has && enrolled);
-    });
   }, []);
 
   const checkIfLoggedIn = async () => {
     const token = await AsyncStorage.getItem('token');
     if (token) {
-      // Check if token is valid by calling a protected endpoint, e.g., /connections
+      // Mandatory biometric before checking token validity
+      const biometricResult = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Unlock SoulLink 💖',
+        fallbackLabel: 'Use Passcode',
+      });
+      if (!biometricResult.success) {
+        await AsyncStorage.removeItem('token');
+        return;
+      }
+
+      // Check if token is valid
       try {
-        const response = await axios.get(`${API_BASE}/connections`, {
+        const response = await axios.get(`${API_BASE}/user/connections`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (response.data.length > 0) {
@@ -48,11 +52,23 @@ export default function Login() {
       return;
     }
     try {
-      const response = await axios.post(`${API_BASE}/login`, { email, password });
+      const response = await axios.post(`${API_BASE}/user/login`, { email, password });
       const { token, user } = response.data;
       await AsyncStorage.setItem('token', token);
+
+      // Mandatory biometric authentication
+      const biometricResult = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Unlock SoulLink 💖',
+        fallbackLabel: 'Use Passcode',
+      });
+      if (!biometricResult.success) {
+        alert('Biometric authentication failed. Please try again.');
+        await AsyncStorage.removeItem('token'); // Remove token if biometric fails
+        return;
+      }
+
       // Check if has partner
-      const connectionsResponse = await axios.get(`${API_BASE}/connections`, {
+      const connectionsResponse = await axios.get(`${API_BASE}/user/connections`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (connectionsResponse.data.length > 0) {
@@ -64,13 +80,6 @@ export default function Login() {
       alert('Login failed: ' + (error.response?.data?.massage || 'Unknown error'));
     }
   }
-
-  const fingerprintLogin = async () => {
-    const res = await LocalAuthentication.authenticateAsync({
-      promptMessage: 'Login with Fingerprint',
-    });
-    if (res.success) router.replace('/PartnerConnectScreen');
-  };
 
   return (
     <LinearGradient colors={['#fdfbfb', '#ebedee']} style={styles.container}>
@@ -105,17 +114,6 @@ export default function Login() {
         <TouchableOpacity style={styles.googleBtn}>
           <ThemedText style={styles.googleText}>Continue with Google</ThemedText>
         </TouchableOpacity>
-
-        {biometricAvailable && (
-          <TouchableOpacity style={styles.fingerprint} onPress={fingerprintLogin}>
-            <LottieView
-              source={{ uri: 'https://assets7.lottiefiles.com/packages/lf20_jcikwtux.json' }}
-              autoPlay
-              loop
-              style={{ width: 60, height: 60 }}
-            />
-          </TouchableOpacity>
-        )}
 
         <View style={styles.footer}>
           <ThemedText onPress={() => router.push('/(login)/signup')}>Create account</ThemedText>
@@ -172,12 +170,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
   },
-  googleText: { fontSize: 15 },
-  fingerprint: {
-    alignItems: 'center',
-    marginTop: 14,
-  },
+  googleText: { fontSize: 15, color: '#444' },
   footer: {
+
     marginTop: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',

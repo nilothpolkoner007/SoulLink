@@ -1,59 +1,28 @@
-import express from "express";
-import User from "../module/user.js";
-import jwt from "jsonwebtoken";
-import bcrypt from "bcrypt";
-import Partner from "../module/partner.js";
-import authenticate from '../middleware/authenticate.js'; 
-import firebaseAuth from '../middleware/firebaseAuth.js';
+import bcrypt from 'bcrypt';
+import express from 'express';
+import jwt from 'jsonwebtoken';
+import authenticate from '../middleware/authenticate.js';
+import Partner from '../module/partner.js';
+import User from '../module/user.js';
 
 const router = express.Router();
 
-router.post("/register", async (req, res) => {
+router.post('/register', async (req, res) => {
   try {
-    const { name, birthday,gender, email, password } = req.body;
-    const userexists= await User.findOne({email});
-    if(userexists){
-      return res.status(400).json({massage:'Bal ar user '});
-    } 
+    const { name, birthday, gender, email, password } = req.body;
+    const userexists = await User.findOne({ email });
+    if (userexists) {
+      return res.status(400).json({ massage: 'Bal ar user ' });
+    }
     const salt = await bcrypt.genSalt(10);
-    const hashedpassord = await bcrypt.hash(password, salt)
-    const user = await User.create({ name, email,birthday,gender, password:hashedpassord });
-    res.status(201).json({ massage: "user created" });
+    const hashedpassord = await bcrypt.hash(password, salt);
+    const user = await User.create({ name, email, birthday, gender, password: hashedpassord });
+    res.status(201).json({ massage: 'user created' });
   } catch (error) {
     console.log(error);
-    res.status(500).json({ massage: "server error" });
-  }
-}); 
-router.post('/firebase-login', firebaseAuth, async (req, res) => {
-  try {
-    const { uid, email, name, picture } = req.firebaseUser;
-
-    let user = await User.findOne({ firebaseUid: uid });
-
-    if (!user) {
-      user = await User.create({
-        name: name || 'User',
-        email,
-        firebaseUid: uid,
-        img: picture,
-        authProvider: 'google',
-      });
-    }
-
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-
-    res.json({
-      message: 'Firebase login success',
-      token,
-      user,
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ massage: 'server error' });
   }
 });
-
-
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -229,13 +198,11 @@ router.get('/connections', authenticate, async (req, res) => {
           avatar_url: partner.img || '',
         },
       },
-    ]); 
-
+    ]);
   } catch (err) {
     console.error('❌ Error fetching partner connection:', err);
     return res.status(500).json({ message: 'Server error' });
   }
 });
 
-export default router
-  
+export default router;

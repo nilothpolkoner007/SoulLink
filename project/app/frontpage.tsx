@@ -1,16 +1,17 @@
-import { View, Image, StyleSheet } from 'react-native';
+import { ThemedText } from '@/components/themed-text';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Image, StyleSheet } from 'react-native';
 import Animated, {
-  useSharedValue,
-  withSpring,
   useAnimatedStyle,
+  useSharedValue,
   withRepeat,
   withSequence,
+  withSpring,
 } from 'react-native-reanimated';
 import frontpage from '../assets/images/logo/icon.png';
-import { ThemedText } from '@/components/themed-text';
 
 export default function FrontPage() {
   const router = useRouter();
@@ -24,12 +25,25 @@ export default function FrontPage() {
       withRepeat(withSpring(1, { damping: 10 }), -1, true),
     );
 
-    const timer = setTimeout(() => {
-      router.replace('/LoveScreen');
-    }, 200);
+    const checkUser = async () => {
+      const type = await AsyncStorage.getItem('userType');
+      if (type) {
+        // User is logged in, redirect to appropriate screen
+        if (type === 'user') (router.replace as any)('/(user)/home');
+        else if (type === 'admin') (router.replace as any)('/(admin)/dashboard');
+        else if (type === 'productmanager')
+          (router.replace as any)('/(ProductManager)/manager/Dashboard');
+        else if (type === 'deliveryboy') (router.replace as any)('/(Delivery)/Home');
+      } else {
+        // User not logged in, show splash for 3 seconds then go to chooseUser
+        setTimeout(() => {
+          router.replace('/chooseUser');
+        }, 3000);
+      }
+    };
 
-    return () => clearTimeout(timer);
-  }, []);
+    checkUser();
+  }, [router]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],

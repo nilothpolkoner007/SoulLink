@@ -1,17 +1,34 @@
-import { View, StyleSheet, useWindowDimensions, TouchableOpacity, ScrollView } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
-import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { useSharedValue, withRepeat, withSequence, withTiming, useAnimatedStyle } from 'react-native-reanimated';
-import { Heart, MessageCircle, Gift, Image as ImageIcon } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
+import { Gift, Heart, Image as ImageIcon, MessageCircle, Video } from 'lucide-react-native';
+import { useEffect } from 'react';
+import { ScrollView, StyleSheet, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 
 const features = [
   { icon: MessageCircle, title: 'Private Chat', description: 'Secure messaging with your partner' },
-  { icon: ImageIcon, title: 'Shared Memories', description: 'Capture and cherish moments together' },
+  { icon: Video, title: 'Video Calls', description: 'Connect face-to-face with your partner' },
+  {
+    icon: ImageIcon,
+    title: 'Shared Memories',
+    description: 'Capture and cherish moments together',
+  },
   { icon: Gift, title: 'Send Gifts', description: 'Surprise your loved one anytime' },
   { icon: Heart, title: 'Track Emotions', description: 'AI-powered relationship insights' },
+];
+
+const testimonials = [
+  { name: 'Alex & Jamie', quote: 'SoulLink brought us closer than ever!' },
+  { name: 'Taylor & Morgan', quote: 'The best way to stay connected.' },
+  { name: 'Jordan & Casey', quote: 'Our love story just got better.' },
 ];
 
 export default function HomeScreen() {
@@ -22,38 +39,32 @@ export default function HomeScreen() {
 
   useEffect(() => {
     heartScale.value = withRepeat(
-      withSequence(
-        withTiming(1.2, { duration: 1000 }),
-        withTiming(1, { duration: 1000 })
-      ),
+      withSequence(withTiming(1.2, { duration: 1000 }), withTiming(1, { duration: 1000 })),
       -1,
-      false
+      false,
     );
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const checkUser = async () => {
       const type = await AsyncStorage.getItem('userType');
       if (!type) return;
 
-      if (type === 'user') router.replace('/(user)/home');
-      if (type === 'admin') router.replace('/(admin)/dashboard');
-      if (type === 'productmanager') router.replace('/(ProductManager)/manager/Dashboard');
-      if (type === 'deliveryboy') router.replace('/(Delivery)/Home');
+      if (type === 'user') (router.replace as any)('/user/home');
+      if (type === 'admin') (router.replace as any)('/admin/dashboard');
+      if (type === 'productmanager') (router.replace as any)('/manager/Dashboard/Dashboard');
+      if (type === 'deliveryboy') (router.replace as any)('/(Delivery)/Home');
     };
 
     checkUser();
-  }, []);
+  }, [router]);
 
   const heartStyle = useAnimatedStyle(() => ({
     transform: [{ scale: heartScale.value }],
   }));
 
   return (
-    <LinearGradient
-      colors={['#FFF5F8', '#FFFFFF', '#F0F9FF']}
-      style={styles.container}
-    >
+    <LinearGradient colors={['#FFF5F8', '#FFFFFF', '#F0F9FF']} style={styles.container}>
       <ScrollView
         contentContainerStyle={[styles.scrollContent, isLarge && styles.scrollContentLarge]}
         showsVerticalScrollIndicator={false}
@@ -66,9 +77,7 @@ export default function HomeScreen() {
           </Animated.View>
 
           <ThemedText style={styles.title}>SoulLink</ThemedText>
-          <ThemedText style={styles.subtitle}>
-            Where two hearts stay connected forever
-          </ThemedText>
+          <ThemedText style={styles.subtitle}>Where two hearts stay connected forever</ThemedText>
         </View>
 
         <View style={[styles.featuresGrid, isLarge && styles.featuresGridLarge]}>
@@ -81,6 +90,18 @@ export default function HomeScreen() {
               <ThemedText style={styles.featureDescription}>{feature.description}</ThemedText>
             </View>
           ))}
+        </View>
+
+        <View style={styles.testimonialsContainer}>
+          <ThemedText style={styles.testimonialsTitle}>What Couples Say</ThemedText>
+          <View style={[styles.testimonialsGrid, isLarge && styles.testimonialsGridLarge]}>
+            {testimonials.map((testimonial, index) => (
+              <View key={index} style={styles.testimonialCard}>
+                <ThemedText style={styles.testimonialQuote}>"{testimonial.quote}"</ThemedText>
+                <ThemedText style={styles.testimonialName}>- {testimonial.name}</ThemedText>
+              </View>
+            ))}
+          </View>
         </View>
 
         <View style={styles.ctaContainer}>
@@ -189,6 +210,50 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
     lineHeight: 20,
+  },
+  testimonialsContainer: {
+    marginBottom: 40,
+    alignItems: 'center',
+  },
+  testimonialsTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  testimonialsGrid: {
+    gap: 16,
+  },
+  testimonialsGridLarge: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  testimonialCard: {
+    backgroundColor: '#FFF',
+    padding: 20,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
+    minWidth: 280,
+    maxWidth: 320,
+  },
+  testimonialQuote: {
+    fontSize: 16,
+    color: '#374151',
+    fontStyle: 'italic',
+    lineHeight: 24,
+    marginBottom: 12,
+  },
+  testimonialName: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '600',
+    textAlign: 'right',
   },
   ctaContainer: {
     marginTop: 20,

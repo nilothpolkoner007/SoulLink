@@ -1,17 +1,17 @@
 // Fingerprint.tsx
-import React, { useState, useRef } from 'react';
+import * as Crypto from 'expo-crypto';
+import * as LocalAuthentication from 'expo-local-authentication';
+import * as SecureStore from 'expo-secure-store';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  View,
+  Alert,
+  Dimensions,
+  PanResponder,
+  StyleSheet,
   Text,
   TouchableOpacity,
-  StyleSheet,
-  Alert,
-  PanResponder,
-  Dimensions,
+  View,
 } from 'react-native';
-import * as LocalAuthentication from 'expo-local-authentication';
-import * as Crypto from 'expo-crypto';
-import * as SecureStore from 'expo-secure-store';
 import Svg, { Path } from 'react-native-svg';
 
 const { width, height } = Dimensions.get('window');
@@ -26,7 +26,7 @@ export default function Fingerprint() {
   const biometricAuth = async () => {
     const hasHardware = await LocalAuthentication.hasHardwareAsync();
     if (!hasHardware) {
-      Alert.alert('Error', 'Device does not support biometrics');
+      Alert.alert('Error', 'Device does not support biometrics. Please use alternative login.');
       return false;
     }
 
@@ -38,6 +38,14 @@ export default function Fingerprint() {
     if (result.success) setAuthenticated(true);
     return result.success;
   };
+
+  // Auto-trigger biometric on mount
+  useEffect(() => {
+    const autoAuth = async () => {
+      await biometricAuth();
+    };
+    autoAuth();
+  }, []);
 
   // ------------------- Gesture Hash -------------------
   const hashGesture = async (points: string) => {
